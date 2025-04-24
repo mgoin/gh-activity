@@ -1,4 +1,8 @@
-#!/usr/bin/env python3
+# /// script
+# dependencies = [
+#   "requests",
+# ]
+# ///
 """
 Collect *all* GitHub events for a user on a given calendar date
 and dump them as newline-delimited JSON (one event per line).
