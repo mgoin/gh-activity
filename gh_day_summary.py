@@ -8,7 +8,10 @@ Output Sections
 2. Commit roll-up
 3. PR / Issue interaction summary
 """
-import sys, json, pathlib, collections, textwrap, datetime, urllib.parse as ul
+import sys
+import json
+import pathlib
+import collections
 
 # ─────────────────────────────── helpers ──────────────────────────────
 def load_events(ndjson_path):
