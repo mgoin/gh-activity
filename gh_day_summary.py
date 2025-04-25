@@ -33,7 +33,8 @@ def aggregate(events):
     commits_by_repo_branch = collections.defaultdict(
         lambda: collections.defaultdict(list)
     )
-    interactions = collections.defaultdict(list)
+    interactions = collections.defaultdict(lambda: collections.defaultdict(list))
+    pr_titles = {}  # Store PR titles by number
 
     for e in events:
         r = repo_key(e)
@@ -54,43 +55,49 @@ def aggregate(events):
         elif t == "PullRequestEvent":
             act = p["action"]  # opened, closed, merged (via closed+merged), etc.
             digest[r][f"pr_{act}"] += 1
-            interactions[r].append(
-                f"PR #{p['number']} {act.upper()}: {p['pull_request']['title']}"
+            pr_num = p["number"]
+            pr_titles[pr_num] = p["pull_request"]["title"]
+            interactions[r][pr_num].append(
+                f"PR #{pr_num} {act.upper()}"
             )
 
         elif t == "PullRequestReviewEvent":
             state = p["review"]["state"]  # APPROVED, CHANGES_REQUESTED…
             digest[r]["reviews"] += 1
-            interactions[r].append(
-                f"Reviewed PR #{p['pull_request']['number']} → {state}"
+            pr_num = p["pull_request"]["number"]
+            pr_titles[pr_num] = p["pull_request"]["title"]
+            interactions[r][pr_num].append(
+                f"Reviewed PR #{pr_num} → {state}"
             )
 
         elif t == "PullRequestReviewCommentEvent":
             digest[r]["review_comments"] += 1
-            interactions[r].append(
-                f"Commented on PR #{p['pull_request']['number']}: "
+            pr_num = p["pull_request"]["number"]
+            pr_titles[pr_num] = p["pull_request"]["title"]
+            interactions[r][pr_num].append(
+                f"Commented on PR #{pr_num}: "
                 f"{p['comment']['body'].splitlines()[0][:80]}…"
             )
 
         elif t == "IssuesEvent":
             digest[r][f"issue_{p['action']}"] += 1
-            interactions[r].append(
+            interactions[r]["issues"].append(
                 f"Issue #{p['issue']['number']} {p['action'].upper()}: "
                 f"{p['issue']['title']}"
             )
 
         elif t == "IssueCommentEvent":
             digest[r]["issue_comments"] += 1
-            interactions[r].append(
+            interactions[r]["issues"].append(
                 f"Commented on Issue #{p['issue']['number']}: "
                 f"{p['comment']['body'].splitlines()[0][:80]}…"
             )
 
         elif t == "CreateEvent" and p["ref_type"] == "branch":
             digest[r]["branches_created"] += 1
-            interactions[r].append(f"Created branch `{p['ref']}`")
+            interactions[r]["other"].append(f"Created branch `{p['ref']}`")
 
-    return digest, commits_by_repo_branch, interactions
+    return digest, commits_by_repo_branch, interactions, pr_titles
 
 # ────────────────────────────── printers ──────────────────────────────
 def print_digest(digest):
@@ -114,12 +121,31 @@ def print_commits(commits):
         print()
     print()
 
-def print_interactions(interactions):
+def print_interactions(interactions, pr_titles):
     print("# PR / Issue interaction summary\n")
-    for repo, acts in sorted(interactions.items()):
+    for repo, categories in sorted(interactions.items()):
         print(f"## {repo}")
-        for line in acts:
-            print(f"- {line}")
+        
+        # Print PR interactions grouped by PR number
+        for pr_num, actions in categories.items():
+            if pr_num == "issues" or pr_num == "other":
+                continue
+                
+            # Print PR title as header
+            if pr_num in pr_titles:
+                print(f"- PR #{pr_num}: {pr_titles[pr_num]}")
+                for action in actions:
+                    print(f"  - {action}")
+        
+        # Print non-PR interactions
+        if "issues" in categories:
+            for action in categories["issues"]:
+                print(f"- {action}")
+                
+        if "other" in categories:
+            for action in categories["other"]:
+                print(f"- {action}")
+        
         print()
     print()
 
@@ -128,11 +154,11 @@ def main():
     if len(sys.argv) != 2:
         sys.exit("Usage: gh_day_summary.py path/to/user-YYYY-MM-DD.ndjson")
     ndjson_path = pathlib.Path(sys.argv[1]).expanduser()
-    digest, commits, interactions = aggregate(load_events(ndjson_path))
+    digest, commits, interactions, pr_titles = aggregate(load_events(ndjson_path))
 
     print_digest(digest)
     print_commits(commits)
-    print_interactions(interactions)
+    print_interactions(interactions, pr_titles)
 
 if __name__ == "__main__":
     main()
